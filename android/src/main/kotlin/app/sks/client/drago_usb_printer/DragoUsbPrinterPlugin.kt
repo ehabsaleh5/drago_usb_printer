@@ -29,7 +29,6 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
 
   private val usbBroadListener = object : OnUsbListener {
     override fun onDeviceAttached(usbDevice: UsbDevice?) {
-      //Usb设备插入
       usbDevice?.let {
         UsbDeviceHelper.instance.checkPermission(it)?.let { hasPermission ->
           if (hasPermission) {
@@ -40,16 +39,14 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
     }
 
     override fun onDeviceDetached(usbDevice: UsbDevice?) {
-      //Usb设备拔出
       usbDevice?.let {
-        val deviceId = "${it.vendorId} - ${it.productId}"
-        removeConnCacheWithKey(deviceId)
+        val deviceKey = it.deviceName // unique per USB device
+        removeConnCacheWithKey(deviceKey)
         MessageSender.sendUsbPlugStatus(usbDevice, 0)
       }
     }
 
     override fun onDeviceGranted(usbDevice: UsbDevice, success: Boolean) {
-      //Usb设备授权
       if (success) {
         MessageSender.sendUsbPlugStatus(usbDevice, 2)
       }
@@ -64,12 +61,8 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
   override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
     MessageSender.applicationContext = flutterPluginBinding.applicationContext
     this.binaryMessenger = flutterPluginBinding.binaryMessenger
-    channel = MethodChannel(
-      binaryMessenger,
-      "drago_usb_printer"
-    )
-    eventChannel =
-      EventChannel(binaryMessenger, "drago_usb_printer_event_channel")
+    channel = MethodChannel(binaryMessenger, "drago_usb_printer")
+    eventChannel = EventChannel(binaryMessenger, "drago_usb_printer_event_channel")
     channel.setMethodCallHandler(this)
     eventChannel.setStreamHandler(this)
 
@@ -103,11 +96,11 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
         val device = MethodCallParser.parseDevice(call)
         if (device != null) {
           val usbDevice = device.usbDevice
-          val deviceId = device.deviceId
-          if (!usbConnCache.contains(deviceId)) {
-            usbConnCache[deviceId] = UsbConn(usbDevice)
+          val deviceKey = usbDevice.deviceName
+          if (!usbConnCache.contains(deviceKey)) {
+            usbConnCache[deviceKey] = UsbConn(usbDevice)
           }
-          result.success(usbConnCache[deviceId]!!.isConn)
+          result.success(usbConnCache[deviceKey]!!.isConn)
         } else {
           val error = "usb error"
           result.error("-1", error, error)
@@ -117,12 +110,12 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
         val device = MethodCallParser.parseDevice(call)
         if (device != null) {
           val usbDevice = device.usbDevice
-          val deviceId = device.deviceId
-          if (!usbConnCache.contains(deviceId)) {
-            usbConnCache[deviceId] = UsbConn(usbDevice)
+          val deviceKey = usbDevice.deviceName
+          if (!usbConnCache.contains(deviceKey)) {
+            usbConnCache[deviceKey] = UsbConn(usbDevice)
           }
           try {
-            val connected = usbConnCache[deviceId]!!.connect()
+            val connected = usbConnCache[deviceKey]!!.connect()
             result.success(connected)
           } catch (e: Exception) {
             val error = e.message ?: ""
@@ -134,14 +127,17 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
         }
       }
       "disconnect" -> {
-        val deviceId = MethodCallParser.parseDeviceId(call)
-        if (usbConnCache.contains(deviceId)) {
-          usbConnCache[deviceId]!!.disconnect()
-          usbConnCache.remove(deviceId)
-          result.success(true)
-        } else {
-          val error = "usb error"
-          result.error("-1", error, error)
+        val device = MethodCallParser.parseDevice(call)
+        if (device != null) {
+          val deviceKey = device.usbDevice.deviceName
+          if (usbConnCache.contains(deviceKey)) {
+            usbConnCache[deviceKey]!!.disconnect()
+            usbConnCache.remove(deviceKey)
+            result.success(true)
+          } else {
+            val error = "usb error"
+            result.error("-1", error, error)
+          }
         }
       }
       "checkDevicePermission" -> {
@@ -164,8 +160,10 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
         }
       }
       "removeUsbConnCache" -> {
-        val deviceId = MethodCallParser.parseDeviceId(call)
-        removeConnCacheWithKey(deviceId)
+        val device = MethodCallParser.parseDevice(call)
+        if (device != null) {
+          removeConnCacheWithKey(device.usbDevice.deviceName)
+        }
         result.success(true)
       }
     }
@@ -191,7 +189,6 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
             }
           }
         }.start()
-
     } else {
       val error = "usb error"
       result.error("-1", error, error)
@@ -199,28 +196,19 @@ class DragoUsbPrinterPlugin : FlutterPlugin, MethodCallHandler, EventChannel.Str
   }
 
   private fun fetchUsbConn(call: MethodCall): UsbConn? {
-    val deviceId = MethodCallParser.parseDeviceId(call)
-    if (!usbConnCache.contains(deviceId)) {
-      val device = MethodCallParser.parseDevice(call)
-      if (device != null) {
-        usbConnCache[deviceId] = UsbConn(device.usbDevice)
+    val device = MethodCallParser.parseDevice(call)
+    if (device != null) {
+      val deviceKey = device.usbDevice.deviceName
+      if (!usbConnCache.contains(deviceKey)) {
+        usbConnCache[deviceKey] = UsbConn(device.usbDevice)
       }
+      return usbConnCache[deviceKey]
     }
-    return usbConnCache[deviceId]
+    return null
   }
 
   private fun removeConnCacheWithKey(key: String) {
-    val removeCaches = arrayListOf<String>()
-    usbConnCache.keys.forEach {
-      if (it.contains(key)) {
-        removeCaches.add(it)
-      }
-    }
-    if (removeCaches.isNotEmpty()) {
-      removeCaches.forEach {
-        usbConnCache.remove(it)
-      }
-    }
+    usbConnCache.remove(key)
   }
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
