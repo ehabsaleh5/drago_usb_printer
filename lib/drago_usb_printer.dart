@@ -50,10 +50,17 @@ class UsbDevice {
     );
   }
 
+  /// يدعم سواء الليست فيها Map أو UsbDevice
   static List<UsbDevice> parseUsbDevices(List<dynamic> jsonList) {
     return jsonList.map((json) {
-      final Map<String, dynamic> safeJson = Map<String, dynamic>.from(json);
-      return UsbDevice.fromJson(safeJson);
+      if (json is UsbDevice) {
+        return json;
+      } else if (json is Map) {
+        final Map<String, dynamic> safeJson = Map<String, dynamic>.from(json);
+        return UsbDevice.fromJson(safeJson);
+      } else {
+        throw Exception("Invalid device type: ${json.runtimeType}");
+      }
     }).toList();
   }
 }
