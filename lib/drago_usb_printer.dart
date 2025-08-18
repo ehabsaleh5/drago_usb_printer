@@ -129,3 +129,27 @@ class DragoUsbPrinter {
 
     final params = {
       "raw": text,
+      "vendorId": _connectedDevice!.vendorId,
+      "productId": _connectedDevice!.productId,
+      "deviceId": _connectedDevice!.deviceId,
+      "address": _connectedDevice!.address,
+    };
+
+    return await _channel.invokeMethod('printRawText', params);
+  }
+
+  /// [write]
+  Future<bool?> write(Uint8List data) async {
+    if (_connectedDevice == null) return false;
+
+    final params = {
+      "data": data,
+      "vendorId": _connectedDevice!.vendorId,
+      "productId": _connectedDevice!.productId,
+      "deviceId": _connectedDevice!.deviceId,
+      "address": _connectedDevice!.address,
+    };
+
+    return await _channel.invokeMethod('write', params);
+  }
+}
