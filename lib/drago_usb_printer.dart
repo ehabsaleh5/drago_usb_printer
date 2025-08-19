@@ -3,97 +3,42 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 
-class UsbDevice {
-  final int? productId;
-  final String? deviceName;
-  final int? vendorId;
-  final int? deviceId;
-  final String? manufacturer;
-  final String? address;
-
-  const UsbDevice({
-    this.productId,
-    this.deviceName,
-    this.vendorId,
-    this.deviceId,
-    this.manufacturer,
-    this.address,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'vendorId': vendorId ?? 0,
-      'productId': productId ?? 0,
-      'deviceName': deviceName ?? "",
-      'manufacturer': manufacturer ?? "",
-      'deviceId': deviceId ?? 0,
-      'address': address ?? "",
-    };
-  }
-
-  factory UsbDevice.fromJson(Map json) {
-    T? safeGet<T>(String key, {T? defaultValue}) {
-      final value = json[key];
-      if (value is T) return value;
-      if (T == int) return int.tryParse(value?.toString() ?? '') as T?;
-      if (T == String) return value?.toString() as T?;
-      return defaultValue;
-    }
-
-    return UsbDevice(
-      productId: safeGet<int>('productId', defaultValue: 0) ?? 0,
-      vendorId: safeGet<int>('vendorId', defaultValue: 0) ?? 0,
-      deviceId: safeGet<int>('deviceId', defaultValue: 0) ?? 0,
-      deviceName: safeGet<String>('deviceName', defaultValue: '') ?? "",
-      manufacturer: safeGet<String>('manufacturer') ?? "",
-      address: safeGet<String>('address') ?? "",
-    );
-  }
-
-  /// يدعم سواء الليست فيها Map أو UsbDevice
-  static List<UsbDevice> parseUsbDevices(List<dynamic> jsonList) {
-    return jsonList.map((json) {
-      if (json is UsbDevice) {
-        return json;
-      } else if (json is Map) {
-        final Map<String, dynamic> safeJson = Map<String, dynamic>.from(json);
-        return UsbDevice.fromJson(safeJson);
-      } else {
-        throw Exception("Invalid device type: ${json.runtimeType}");
-      }
-    }).toList();
-  }
-}
-
 class DragoUsbPrinter {
   static const MethodChannel _channel =
       const MethodChannel('drago_usb_printer');
 
-  UsbDevice? _connectedDevice;
+  int vendorId = 0;
+  int productId = 0;
+  int deviceId = 0;
 
   /// [getUSBDeviceList]
-  /// get list of available usb devices on android
-  static Future<List<UsbDevice>> getUSBDeviceList() async {
+  /// get list of available usb device on android
+  static Future<List<Map<String, dynamic>>> getUSBDeviceList() async {
     if (Platform.isAndroid) {
       List<dynamic> devices = await _channel.invokeMethod('getUSBDeviceList');
-      return UsbDevice.parseUsbDevices(devices);
+      print(devices);
+      var result = devices
+          .cast<Map<dynamic, dynamic>>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      return result;
     } else {
-      return <UsbDevice>[];
+      return <Map<String, dynamic>>[];
     }
   }
 
   /// [connect]
-  /// connect to a printer via UsbDevice
-  Future<bool?> connect(UsbDevice device) async {
-    _connectedDevice = device;
+  /// connect to a printer via vendorId, productId and deviceId
+  Future<bool?> connect(int vendorId, int productId, int deviceId) async {
+    this.vendorId = vendorId;
+    this.productId = productId;
+    this.deviceId = deviceId;
 
-    final params = {
-      "vendorId": device.vendorId,
-      "productId": device.productId,
-      "deviceId": device.deviceId,
-      "address": device.address,
+    Map<String, dynamic> params = {
+      "vendorId": vendorId,
+      "productId": productId,
+      "deviceId": deviceId,
     };
-
     final bool? result = await _channel.invokeMethod('connect', params);
     print('connected $result');
     return result;
@@ -102,61 +47,51 @@ class DragoUsbPrinter {
   /// [close]
   /// close the connection after print with usb printer
   Future<bool?> close() async {
-    if (_connectedDevice == null) return false;
-
-    final params = {
-      "vendorId": _connectedDevice!.vendorId,
-      "productId": _connectedDevice!.productId,
-      "deviceId": _connectedDevice!.deviceId,
-      "address": _connectedDevice!.address,
+    Map<String, dynamic> params = {
+      "vendorId": vendorId,
+      "productId": productId,
+      "deviceId": deviceId,
     };
-
     final bool? result = await _channel.invokeMethod('disconnect', params);
     return result;
   }
 
   /// [printText]
+  /// print text
   Future<bool?> printText(String text) async {
-    if (_connectedDevice == null) return false;
-
-    final params = {
+    Map<String, dynamic> params = {
       "text": text,
-      "vendorId": _connectedDevice!.vendorId,
-      "productId": _connectedDevice!.productId,
-      "deviceId": _connectedDevice!.deviceId,
-      "address": _connectedDevice!.address,
+      "vendorId": vendorId,
+      "productId": productId,
+      "deviceId": deviceId,
     };
-
-    return await _channel.invokeMethod('printText', params);
+    final bool? result = await _channel.invokeMethod('printText', params);
+    return result;
   }
 
   /// [printRawText]
+  /// print raw text
   Future<bool?> printRawText(String text) async {
-    if (_connectedDevice == null) return false;
-
-    final params = {
+    Map<String, dynamic> params = {
       "raw": text,
-      "vendorId": _connectedDevice!.vendorId,
-      "productId": _connectedDevice!.productId,
-      "deviceId": _connectedDevice!.deviceId,
-      "address": _connectedDevice!.address,
+      "vendorId": vendorId,
+      "productId": productId,
+      "deviceId": deviceId,
     };
-
-    return await _channel.invokeMethod('printRawText', params);
+    final bool? result = await _channel.invokeMethod('printRawText', params);
+    return result;
   }
 
   /// [write]
+  /// write data byte
   Future<bool?> write(Uint8List data) async {
-    if (_connectedDevice == null) return false;
-
-    final params = {
+    Map<String, dynamic> params = {
       "data": data,
-      "vendorId": _connectedDevice!.vendorId,
-      "productId": _connectedDevice!.productId,
-      "deviceId": _connectedDevice!.deviceId,
-      "address": _connectedDevice!.address,
+      "vendorId": vendorId,
+      "productId": productId,
+      "deviceId": deviceId,
     };
-
-    return await _channel.invokeMethod('write', params);
+    final bool? result = await _channel.invokeMethod('write', params);
+    return result;
   }
 }
